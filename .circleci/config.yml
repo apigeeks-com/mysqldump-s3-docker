@@ -1,0 +1,83 @@
+# requires following ENV vars to be registered in CircleCI :
+#
+# DOCKER_HUB_USERNAME
+# DOCKER_HUB_PASSWORD
+#
+version: 2
+
+defaults: &defaults
+  environment:
+    DOCKER_IMAGE_NAME: apigeeks/mysqldump-s3
+
+  working_directory: ~/repo
+  docker:
+    - image: circleci/node:10
+
+jobs:
+  build:
+    <<: *defaults
+    steps:
+      - checkout
+
+      - setup_remote_docker
+
+      - run:
+          command: |
+            mkdir docker-cache/
+
+
+            if [[ -z "$CIRCLE_BUILD_NUM" ]]; then                            
+              sudo docker build -t $DOCKER_IMAGE_NAME:latest .
+              sudo docker save -o docker-cache/image.tar $DOCKER_IMAGE_NAME:latest
+            else          
+              docker build -t $DOCKER_IMAGE_NAME:latest .
+              docker save -o docker-cache/image.tar $DOCKER_IMAGE_NAME:latest              
+            fi
+      - save_cache:
+          key: docker-cache-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - docker-cache
+
+  deploy:
+    <<: *defaults
+    steps:
+      - restore_cache:
+          keys:
+            - docker-cache-{{ .Branch }}-{{ .Revision }}
+
+      - setup_remote_docker
+
+      - run:
+          command: |
+            if [[ -z "$CIRCLE_BUILD_NUM" ]]; then                            
+              sudo docker load < docker-cache/image.tar
+              sudo docker tag $DOCKER_IMAGE_NAME:latest $DOCKER_IMAGE_NAME:$CIRCLE_TAG
+              sudo docker login -u $DOCKER_HUB_USERNAME -p $DOCKER_HUB_PASSWORD
+
+              sudo docker push $DOCKER_IMAGE_NAME:$CIRCLE_TAG
+              sudo docker push $DOCKER_IMAGE_NAME:latest
+            else
+              docker load < docker-cache/image.tar
+              docker tag $DOCKER_IMAGE_NAME:latest $DOCKER_IMAGE_NAME:$CIRCLE_TAG
+              docker login -u $DOCKER_HUB_USERNAME -p $DOCKER_HUB_PASSWORD
+
+              docker push $DOCKER_IMAGE_NAME:$CIRCLE_TAG
+              docker push $DOCKER_IMAGE_NAME:latest
+            fi
+
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - build:
+          filters:
+            tags:
+              only: /^[0-9]+\.[0-9]+\.[0-9]+/
+      - deploy:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /^[0-9]+\.[0-9]+\.[0-9]+/
+            branches:
+              ignore: /.*/
