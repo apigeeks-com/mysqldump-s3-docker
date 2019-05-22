@@ -14,3 +14,6 @@ echo "Backing up mysql: user=${MYSQL_USER}, host=${MYSQL_HOST}, port=${MYSQL_POR
 mysqldump --verbose -u "${MYSQL_USER}" -p"${MYSQL_PASS}" -h "${MYSQL_HOST}" --port "${MYSQL_PORT}" --databases ${MYSQL_DB_NAME} | gzip | aws s3 cp - s3://${S3_BUCKET}/${BACKUP_NAME}
 
 echo "Backup up FINISHED"
+
+echo "Update latest.txt file with latest version of dump"
+echo ${BACKUP_NAME} | aws s3 cp - s3://${S3_BUCKET}/latest-mysql-dump-version.txt
